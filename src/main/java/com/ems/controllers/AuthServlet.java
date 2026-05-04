@@ -2,6 +2,7 @@ package com.ems.controllers;
 
 import com.ems.model.User;
 import com.ems.service.UserService;
+import com.ems.util.CsrfUtil;
 
 import jakarta.servlet.RequestDispatcher;
 import jakarta.servlet.ServletException;
@@ -20,6 +21,13 @@ public class AuthServlet extends HttpServlet {
     @Override
     protected void doGet(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
         HttpSession session = request.getSession(false);
+        if (session == null) {
+            session = request.getSession(true);
+        }
+        // Ensure token exists and set a cookie (double-submit) to handle cases where session may not be persisted across requests.
+        String token = CsrfUtil.ensureToken(session);
+        CsrfUtil.ensureCookie(request, response);
+        request.setAttribute("csrfToken", token);
         if (session != null && session.getAttribute("user") != null) {
             response.sendRedirect(request.getContextPath() + "/dashboard");
             return;
@@ -39,6 +47,17 @@ public class AuthServlet extends HttpServlet {
     protected void doPost(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
         HttpSession session = request.getSession(false);
         String action = request.getParameter("action");
+
+        // Only enforce CSRF when a session already exists. For initial login (no session)
+        // browsers may not yet have a session cookie; allow login flow without CSRF token.
+        if (session != null) {
+            if (!CsrfUtil.isValid(request)) {
+                HttpSession newSession = request.getSession(true);
+                newSession.setAttribute("loginError", "Invalid request token.");
+                response.sendRedirect(request.getContextPath() + "/login");
+                return;
+            }
+        }
 
         if (action != null && action.equals("logout")) {
             if (session != null) {
@@ -68,6 +87,9 @@ public class AuthServlet extends HttpServlet {
                 session.invalidate();
             }
             HttpSession newSession = request.getSession(true);
+            // Regenerate CSRF token for the new session and set cookie
+            CsrfUtil.ensureToken(newSession);
+            CsrfUtil.ensureCookie(request, response);
             newSession.setAttribute("user", user);
             newSession.setMaxInactiveInterval(1800);
             if ("EMPLOYEE".equalsIgnoreCase(user.getRole())) {
@@ -84,7 +106,7 @@ public class AuthServlet extends HttpServlet {
             }
         } else {
             HttpSession newSession = request.getSession(true);
-            newSession.setAttribute("loginError", "Invalid username or password.");
+            newSession.setAttribute("loginError", "Invalid username, password, or role.");
             response.sendRedirect(request.getContextPath() + "/login");
         }
     }

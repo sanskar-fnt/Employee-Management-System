@@ -5,6 +5,8 @@ import com.ems.model.Employee;
 import com.ems.model.User;
 import com.ems.service.AttendanceService;
 import com.ems.service.EmployeeService;
+import com.ems.service.PerformanceService;
+import com.ems.util.CsrfUtil;
 
 import jakarta.servlet.RequestDispatcher;
 import jakarta.servlet.ServletException;
@@ -20,6 +22,7 @@ public class EmployeeDashboardServlet extends HttpServlet {
 
     private final EmployeeService employeeService = new EmployeeService();
     private final AttendanceService attendanceService = new AttendanceService();
+    private final PerformanceService performanceService = new PerformanceService();
 
     @Override
     protected void doGet(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
@@ -28,6 +31,7 @@ public class EmployeeDashboardServlet extends HttpServlet {
             response.sendRedirect(request.getContextPath() + "/login");
             return;
         }
+        request.setAttribute("csrfToken", CsrfUtil.ensureToken(session));
 
         User user = (User) session.getAttribute("user");
         if (user == null || !"EMPLOYEE".equalsIgnoreCase(user.getRole())) {
@@ -51,8 +55,8 @@ public class EmployeeDashboardServlet extends HttpServlet {
             request.setAttribute("attendanceError", "Your account is not linked to an employee profile.");
         } else {
             AttendanceSnapshot snapshot = attendanceService.getTodaySnapshot(user.getId());
-            boolean canCheckIn = snapshot == null || snapshot.getCheckOutTime() != null;
-            boolean canCheckOut = snapshot != null && snapshot.getCheckInTime() != null && snapshot.getCheckOutTime() == null;
+            boolean canCheckIn = attendanceService.canCheckIn(user.getId());
+            boolean canCheckOut = attendanceService.canCheckOut(user.getId());
 
             String todayStatus = "Absent";
             if (snapshot != null && snapshot.getCheckInTime() != null && snapshot.getCheckOutTime() == null) {
@@ -67,6 +71,11 @@ public class EmployeeDashboardServlet extends HttpServlet {
             request.setAttribute("canCheckOut", canCheckOut);
             request.setAttribute("todayStatus", todayStatus);
             request.setAttribute("attendanceCount", attendanceService.getAttendanceCountForUser(user.getId()));
+            request.setAttribute("attendanceHistory", attendanceService.getAttendanceHistoryForUser(user.getId(), 10));
+            request.setAttribute("workHoursToday", attendanceService.getTodayWorkHours(user.getId()));
+            request.setAttribute("lateToday", attendanceService.isLateToday(user.getId()));
+            request.setAttribute("weeklyAttendance", attendanceService.getWeeklyAttendanceCount(user.getId()));
+            request.setAttribute("performanceScore", performanceService.calculateScore(user.getId()));
         }
         RequestDispatcher dispatcher = request.getRequestDispatcher("/WEB-INF/pages/empDashboard.jsp");
         dispatcher.forward(request, response);

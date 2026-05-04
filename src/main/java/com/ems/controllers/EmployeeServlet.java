@@ -5,6 +5,7 @@ import com.ems.model.User;
 import com.ems.service.EmployeeService;
 import com.ems.service.UserService;
 import com.ems.service.AttendanceService;
+import com.ems.util.CsrfUtil;
 
 import jakarta.servlet.RequestDispatcher;
 import jakarta.servlet.ServletException;
@@ -33,6 +34,7 @@ public class EmployeeServlet extends HttpServlet {
             response.sendRedirect(request.getContextPath() + "/login");
             return;
         }
+        request.setAttribute("csrfToken", CsrfUtil.ensureToken(session));
 
         User user = (User) session.getAttribute("user");
         String role = user == null ? null : user.getRole();
@@ -44,13 +46,20 @@ public class EmployeeServlet extends HttpServlet {
         String query = request.getParameter("q");
         LocalDate startDate = parseDate(request.getParameter("startDate"));
         LocalDate endDate = parseDate(request.getParameter("endDate"));
+        int page = parsePage(request.getParameter("page"));
+        int size = parseSize(request.getParameter("size"));
+        int offset = (page - 1) * size;
+        int totalEmployees;
         List<Employee> employees;
         if (query != null && !query.trim().isEmpty()) {
-            employees = employeeService.searchEmployees(query.trim());
+            employees = employeeService.searchEmployees(query.trim(), size, offset);
+            totalEmployees = employeeService.getEmployeeCountByQuery(query.trim());
             request.setAttribute("searchQuery", query.trim());
         } else {
-            employees = employeeService.getAllEmployees();
+            employees = employeeService.getAllEmployees(size, offset);
+            totalEmployees = employeeService.getEmployeeCount();
         }
+        int totalPages = Math.max(1, (int) Math.ceil(totalEmployees / (double) size));
         Map<Integer, Integer> attendanceCounts = new HashMap<>();
         for (Employee employee : employees) {
             Integer userId = employee.getUserId();
@@ -61,6 +70,9 @@ public class EmployeeServlet extends HttpServlet {
         request.setAttribute("attendanceCounts", attendanceCounts);
         request.setAttribute("startDate", startDate == null ? "" : startDate.toString());
         request.setAttribute("endDate", endDate == null ? "" : endDate.toString());
+        request.setAttribute("page", page);
+        request.setAttribute("size", size);
+        request.setAttribute("totalPages", totalPages);
         RequestDispatcher dispatcher = request.getRequestDispatcher("/WEB-INF/pages/employee.jsp");
         dispatcher.forward(request, response);
     }
@@ -70,6 +82,11 @@ public class EmployeeServlet extends HttpServlet {
         HttpSession session = request.getSession(false);
         if (session == null || session.getAttribute("user") == null) {
             response.sendRedirect(request.getContextPath() + "/login");
+            return;
+        }
+        if (!CsrfUtil.isValid(request)) {
+            session.setAttribute("formError", "Invalid request token.");
+            response.sendRedirect(request.getContextPath() + "/employees");
             return;
         }
 
@@ -94,43 +111,35 @@ public class EmployeeServlet extends HttpServlet {
             String phone = request.getParameter("phone");
             String department = request.getParameter("department");
 
-            if (isBlank(username) || username.trim().length() < 3
-                    || isBlank(password) || password.trim().length() < 4
-                    || isBlank(name)
-                    || isBlank(email)) {
-                session.setAttribute("formError", "Username (min 3), password (min 4), name, and email are required.");
+            User newUser = new User();
+            newUser.setUsername(username == null ? null : username.trim());
+            newUser.setPassword(password == null ? null : password.trim());
+            newUser.setRole("EMPLOYEE");
+            String userError = userService.validateNewUser(newUser);
+            if (userError != null) {
+                session.setAttribute("formError", userError);
                 response.sendRedirect(request.getContextPath() + "/employees");
                 return;
             }
 
-            if (!isValidEmail(email)) {
-                session.setAttribute("formError", "Please enter a valid email address.");
+            Employee employee = new Employee();
+            employee.setName(name == null ? null : name.trim());
+            employee.setEmail(email == null ? null : email.trim());
+            employee.setPhone(phone);
+            employee.setDepartment(department);
+            String employeeError = employeeService.validateEmployee(employee);
+            if (employeeError != null) {
+                session.setAttribute("formError", employeeError);
                 response.sendRedirect(request.getContextPath() + "/employees");
                 return;
             }
 
-            if (!isBlank(phone) && !isNumeric(phone)) {
-                session.setAttribute("formError", "Phone must contain digits only.");
-                response.sendRedirect(request.getContextPath() + "/employees");
-                return;
-            }
-
-            if (userService.isUsernameExists(username.trim())) {
-                session.setAttribute("formError", "Username already exists.");
-                response.sendRedirect(request.getContextPath() + "/employees");
-                return;
-            }
-
-            if (employeeService.isEmailExists(email.trim())) {
+            if (employeeService.isEmailExists(employee.getEmail())) {
                 session.setAttribute("formError", "Email already exists.");
                 response.sendRedirect(request.getContextPath() + "/employees");
                 return;
             }
 
-            User newUser = new User();
-            newUser.setUsername(username.trim());
-            newUser.setPassword(password.trim());
-            newUser.setRole("EMPLOYEE");
             int userId = userService.createUser(newUser);
             if (userId <= 0) {
                 session.setAttribute("formError", "Unable to create login for employee.");
@@ -138,11 +147,6 @@ public class EmployeeServlet extends HttpServlet {
                 return;
             }
 
-            Employee employee = new Employee();
-            employee.setName(name.trim());
-            employee.setEmail(email.trim());
-            employee.setPhone(phone);
-            employee.setDepartment(department);
             boolean created = employeeService.addEmployee(employee, userId);
             if (!created) {
                 userService.deleteUserById(userId);
@@ -163,21 +167,6 @@ public class EmployeeServlet extends HttpServlet {
             String department = request.getParameter("department");
 
             if (idParam != null) {
-                if (isBlank(name) || isBlank(email)) {
-                    session.setAttribute("formError", "Name and email are required for update.");
-                    response.sendRedirect(request.getContextPath() + "/employees");
-                    return;
-                }
-                if (!isValidEmail(email)) {
-                    session.setAttribute("formError", "Please enter a valid email address.");
-                    response.sendRedirect(request.getContextPath() + "/employees");
-                    return;
-                }
-                if (!isBlank(phone) && !isNumeric(phone)) {
-                    session.setAttribute("formError", "Phone must contain digits only.");
-                    response.sendRedirect(request.getContextPath() + "/employees");
-                    return;
-                }
                 int id;
                 try {
                     id = Integer.parseInt(idParam);
@@ -188,10 +177,21 @@ public class EmployeeServlet extends HttpServlet {
                 }
                 Employee employee = new Employee();
                 employee.setId(id);
-                employee.setName(name.trim());
-                employee.setEmail(email.trim());
+                employee.setName(name == null ? null : name.trim());
+                employee.setEmail(email == null ? null : email.trim());
                 employee.setPhone(phone);
                 employee.setDepartment(department);
+                String employeeError = employeeService.validateEmployee(employee);
+                if (employeeError != null) {
+                    session.setAttribute("formError", employeeError);
+                    response.sendRedirect(request.getContextPath() + "/employees");
+                    return;
+                }
+                if (employeeService.isEmailExistsForOther(employee.getEmail(), id)) {
+                    session.setAttribute("formError", "Email already exists.");
+                    response.sendRedirect(request.getContextPath() + "/employees");
+                    return;
+                }
                 boolean updated = employeeService.updateEmployee(employee);
                 if (updated) {
                     session.setAttribute("successMessage", "Employee updated successfully.");
@@ -228,16 +228,25 @@ public class EmployeeServlet extends HttpServlet {
         }
     }
 
-    private boolean isBlank(String value) {
-        return value == null || value.trim().isEmpty();
+    private int parsePage(String value) {
+        try {
+            int page = Integer.parseInt(value);
+            return page < 1 ? 1 : page;
+        } catch (Exception ex) {
+            return 1;
+        }
     }
 
-    private boolean isNumeric(String value) {
-        return value != null && value.matches("\\d+");
-    }
-
-    private boolean isValidEmail(String value) {
-        return value != null && value.matches("^[A-Za-z0-9+_.-]+@[A-Za-z0-9.-]+$");
+    private int parseSize(String value) {
+        try {
+            int size = Integer.parseInt(value);
+            if (size < 5) {
+                return 5;
+            }
+            return Math.min(size, 50);
+        } catch (Exception ex) {
+            return 10;
+        }
     }
 
     private LocalDate parseDate(String value) {

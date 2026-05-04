@@ -26,17 +26,20 @@ public class UserService {
                     if (!isPasswordValid(password, storedHash)) {
                         return null;
                     }
-                    user = new User();
-                    user.setId(resultSet.getInt("id"));
-                    user.setUsername(resultSet.getString("username"));
-                    user.setPassword(null);
                     String role = null;
                     try {
                         role = resultSet.getString("role");
                     } catch (SQLException ignored) {
                         role = null;
                     }
-                    user.setRole(role == null ? "ADMIN" : role);
+                    if (!isAllowedRole(role)) {
+                        return null;
+                    }
+                    user = new User();
+                    user.setId(resultSet.getInt("id"));
+                    user.setUsername(resultSet.getString("username"));
+                    user.setPassword(null);
+                    user.setRole(role);
                     try {
                         int employeeId = resultSet.getInt("employee_id");
                         if (!resultSet.wasNull()) {
@@ -105,6 +108,27 @@ public class UserService {
         return 0;
     }
 
+    public String validateNewUser(User user) {
+        if (user == null) {
+            return "User details are required.";
+        }
+        String username = user.getUsername();
+        String password = user.getPassword();
+        if (isBlank(username) || username.trim().length() < 3) {
+            return "Username must be at least 3 characters.";
+        }
+        if (isBlank(password) || password.trim().length() < 8) {
+            return "Password must be at least 8 characters.";
+        }
+        if (!isStrongPassword(password)) {
+            return "Password must include letters and numbers.";
+        }
+        if (isUsernameExists(username.trim())) {
+            return "Username already exists.";
+        }
+        return null;
+    }
+
     private boolean isPasswordValid(String plainPassword, String storedHash) {
         if (plainPassword == null || storedHash == null) {
             return false;
@@ -113,5 +137,22 @@ public class UserService {
             return BCrypt.checkpw(plainPassword, storedHash);
         }
         return storedHash.equals(plainPassword);
+    }
+
+    private boolean isAllowedRole(String role) {
+        return role != null && ("ADMIN".equalsIgnoreCase(role) || "EMPLOYEE".equalsIgnoreCase(role));
+    }
+
+    private boolean isBlank(String value) {
+        return value == null || value.trim().isEmpty();
+    }
+
+    private boolean isStrongPassword(String value) {
+        if (value == null) {
+            return false;
+        }
+        boolean hasLetter = value.matches(".*[A-Za-z].*");
+        boolean hasNumber = value.matches(".*\\d.*");
+        return hasLetter && hasNumber;
     }
 }

@@ -5,6 +5,7 @@ import com.ems.model.Task;
 import com.ems.model.User;
 import com.ems.service.EmployeeService;
 import com.ems.service.TaskService;
+import com.ems.util.CsrfUtil;
 
 import jakarta.servlet.RequestDispatcher;
 import jakarta.servlet.ServletException;
@@ -30,6 +31,7 @@ public class TaskServlet extends HttpServlet {
             response.sendRedirect(request.getContextPath() + "/login");
             return;
         }
+        request.setAttribute("csrfToken", CsrfUtil.ensureToken(session));
 
         User user = (User) session.getAttribute("user");
         String role = user == null ? null : user.getRole();
@@ -49,20 +51,38 @@ public class TaskServlet extends HttpServlet {
             request.setAttribute("taskError", error);
         }
 
+        String statusFilter = request.getParameter("status");
+        request.setAttribute("statusFilter", statusFilter == null ? "" : statusFilter.trim().toUpperCase());
+        String query = request.getParameter("q");
+        if (query != null) {
+            query = query.trim();
+        }
+        request.setAttribute("searchQuery", query == null ? "" : query);
+        int page = parsePage(request.getParameter("page"));
+        int size = parseSize(request.getParameter("size"));
+        int offset = (page - 1) * size;
+        int totalTasks;
+
         if ("ADMIN".equalsIgnoreCase(role)) {
-            List<Task> tasks = taskService.getAllTasks();
+            List<Task> tasks = taskService.searchAllTasks(query, statusFilter, size, offset);
+            totalTasks = taskService.getTaskCountForSearch(query, statusFilter);
             Map<String, Integer> stats = taskService.getTaskStats();
             List<Employee> employees = employeeService.getAllEmployees();
             request.setAttribute("tasks", tasks);
             request.setAttribute("taskStats", stats);
             request.setAttribute("employees", employees);
         } else if ("EMPLOYEE".equalsIgnoreCase(role)) {
-            List<Task> tasks = taskService.getTasksByEmployee(user.getId());
+            List<Task> tasks = taskService.searchTasksForEmployee(user.getId(), query, statusFilter, size, offset);
+            totalTasks = taskService.getTaskCountForEmployeeSearch(user.getId(), query, statusFilter);
             request.setAttribute("tasks", tasks);
         } else {
             response.sendRedirect(request.getContextPath() + "/dashboard");
             return;
         }
+        int totalPages = Math.max(1, (int) Math.ceil(totalTasks / (double) size));
+        request.setAttribute("page", page);
+        request.setAttribute("size", size);
+        request.setAttribute("totalPages", totalPages);
 
         RequestDispatcher dispatcher = request.getRequestDispatcher("/WEB-INF/pages/tasks.jsp");
         dispatcher.forward(request, response);
@@ -73,6 +93,11 @@ public class TaskServlet extends HttpServlet {
         HttpSession session = request.getSession(false);
         if (session == null || session.getAttribute("user") == null) {
             response.sendRedirect(request.getContextPath() + "/login");
+            return;
+        }
+        if (!CsrfUtil.isValid(request)) {
+            session.setAttribute("taskError", "Invalid request token.");
+            response.sendRedirect(request.getContextPath() + "/tasks");
             return;
         }
 
@@ -105,6 +130,27 @@ public class TaskServlet extends HttpServlet {
         response.sendRedirect(request.getContextPath() + "/tasks");
     }
 
+    private int parsePage(String value) {
+        try {
+            int page = Integer.parseInt(value);
+            return page < 1 ? 1 : page;
+        } catch (Exception ex) {
+            return 1;
+        }
+    }
+
+    private int parseSize(String value) {
+        try {
+            int size = Integer.parseInt(value);
+            if (size < 5) {
+                return 5;
+            }
+            return Math.min(size, 50);
+        } catch (Exception ex) {
+            return 10;
+        }
+    }
+
     private void handleAssign(HttpServletRequest request, HttpSession session, User user) {
         String title = request.getParameter("title");
         String description = request.getParameter("description");
@@ -113,7 +159,7 @@ public class TaskServlet extends HttpServlet {
         String dueDate = request.getParameter("dueDate");
         String reminderAt = request.getParameter("reminderAt");
 
-        if (isBlank(title) || isBlank(description) || isBlank(assignedToParam)) {
+        if (isBlank(assignedToParam)) {
             session.setAttribute("taskError", "Title, description, and assignee are required.");
             return;
         }
@@ -127,8 +173,8 @@ public class TaskServlet extends HttpServlet {
         }
 
         Task task = new Task();
-        task.setTitle(title.trim());
-        task.setDescription(description.trim());
+        task.setTitle(title == null ? null : title.trim());
+        task.setDescription(description == null ? null : description.trim());
         task.setAssignedTo(assignedTo);
         task.setAssignedBy(user.getId());
         task.setStatus("PENDING");
@@ -136,9 +182,8 @@ public class TaskServlet extends HttpServlet {
         task.setDueDate(parseDate(dueDate));
         task.setReminderAt(parseTimestamp(reminderAt));
 
-        boolean created = taskService.assignTask(task);
-        session.setAttribute(created ? "taskSuccess" : "taskError",
-                created ? "Task assigned successfully." : "Unable to assign task.");
+        TaskService.TaskActionResult result = taskService.attemptAssignTask(task);
+        session.setAttribute(result.isSuccess() ? "taskSuccess" : "taskError", result.getMessage());
     }
 
     private void handleUpdateStatus(HttpServletRequest request, HttpSession session, User user) {
@@ -157,28 +202,12 @@ public class TaskServlet extends HttpServlet {
             return;
         }
 
-        String normalized = status.trim().toUpperCase();
-        if (!isAllowedStatus(normalized)) {
-            session.setAttribute("taskError", "Invalid status selection.");
-            return;
-        }
-
-        if (!taskService.isTaskAssignedToUser(taskId, user.getId())) {
-            session.setAttribute("taskError", "You cannot update this task.");
-            return;
-        }
-
-        boolean updated = taskService.updateTaskStatus(taskId, normalized);
-        session.setAttribute(updated ? "taskSuccess" : "taskError",
-                updated ? "Task status updated." : "Unable to update task status.");
+        TaskService.TaskActionResult result = taskService.attemptStatusUpdate(taskId, user.getId(), status.trim().toUpperCase());
+        session.setAttribute(result.isSuccess() ? "taskSuccess" : "taskError", result.getMessage());
     }
 
     private boolean isBlank(String value) {
         return value == null || value.trim().isEmpty();
-    }
-
-    private boolean isAllowedStatus(String value) {
-        return "PENDING".equals(value) || "IN_PROGRESS".equals(value) || "COMPLETED".equals(value);
     }
 
     private java.sql.Date parseDate(String value) {

@@ -3,6 +3,9 @@ package com.ems.controllers;
 import com.ems.model.User;
 import com.ems.service.AttendanceService;
 import com.ems.service.EmployeeService;
+import com.ems.service.TaskService;
+import com.ems.service.PerformanceService;
+import com.ems.util.CsrfUtil;
 
 import jakarta.servlet.RequestDispatcher;
 import jakarta.servlet.ServletException;
@@ -20,6 +23,8 @@ public class DashboardServlet extends HttpServlet {
 
     private final EmployeeService employeeService = new EmployeeService();
     private final AttendanceService attendanceService = new AttendanceService();
+    private final TaskService taskService = new TaskService();
+    private final PerformanceService performanceService = new PerformanceService();
 
     @Override
     protected void doGet(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
@@ -28,6 +33,7 @@ public class DashboardServlet extends HttpServlet {
             response.sendRedirect(request.getContextPath() + "/login");
             return;
         }
+        request.setAttribute("csrfToken", CsrfUtil.ensureToken(session));
 
         User user = (User) session.getAttribute("user");
         if (user != null && "EMPLOYEE".equalsIgnoreCase(user.getRole())) {
@@ -46,6 +52,8 @@ public class DashboardServlet extends HttpServlet {
         request.setAttribute("inactiveEmployees", inactiveEmployees);
         request.setAttribute("todayAttendance", attendanceService.getTodayAttendanceCount());
         request.setAttribute("totalAttendance", attendanceService.getTotalAttendanceCount());
+        request.setAttribute("taskStats", taskService.getTaskStats());
+        request.setAttribute("performanceLeaderboard", performanceService.getTopPerformers(5));
         if (startDate != null && endDate != null) {
             request.setAttribute("attendanceRows", attendanceService.getAttendanceByRange(startDate, endDate));
             request.setAttribute("recentAttendanceRows", attendanceService.getRecentAttendanceByRange(startDate, endDate, 10));

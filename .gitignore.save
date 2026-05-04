@@ -1,0 +1,22 @@
+# Build output
+build/
+*.class
+
+# Claude / AI tools
+.claude/
+
+# Node / JS (if any)
+node_modules/
+
+# Logs
+*.log
+
+# OS files
+.DS_Store
+
+# Eclipse / IDE
+.metadata/
+.settings/
+.project
+.classpath
+

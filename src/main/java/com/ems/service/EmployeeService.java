@@ -65,6 +65,21 @@ public class EmployeeService {
         return false;
     }
 
+    public boolean isEmailExistsForOther(String email, int employeeId) {
+        String sql = "SELECT 1 FROM employees WHERE email=? AND id<>?";
+        try (Connection connection = DBConfig.getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, email);
+            statement.setInt(2, employeeId);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                return resultSet.next();
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return false;
+    }
+
     public Employee getByUserId(int userId) {
         String sql = "SELECT e.*, CASE WHEN a.check_in IS NOT NULL AND a.check_out IS NULL THEN 'Active' ELSE 'Inactive' END AS status "
                 + "FROM employees e "
@@ -119,6 +134,10 @@ public class EmployeeService {
     }
 
     public List<Employee> getAllEmployees() {
+        return getAllEmployees(1000, 0);
+    }
+
+    public List<Employee> getAllEmployees(int limit, int offset) {
         List<Employee> employees = new ArrayList<>();
         String sql = "SELECT e.*, CASE WHEN a.check_in IS NOT NULL AND a.check_out IS NULL THEN 'Active' ELSE 'Inactive' END AS status "
                 + "FROM employees e "
@@ -126,26 +145,33 @@ public class EmployeeService {
                 + "  SELECT t.user_id, t.check_in, t.check_out FROM attendance t "
                 + "  WHERE t.work_date = CURDATE() "
                 + "  AND t.check_in = (SELECT MAX(t2.check_in) FROM attendance t2 WHERE t2.user_id = t.user_id AND t2.work_date = CURDATE())"
-                + ") a ON a.user_id = e.user_id";
-        String fallbackSql = "SELECT * FROM employees";
+                + ") a ON a.user_id = e.user_id "
+                + "ORDER BY e.name LIMIT ? OFFSET ?";
+        String fallbackSql = "SELECT * FROM employees ORDER BY name LIMIT ? OFFSET ?";
 
         try (Connection connection = DBConfig.getConnection();
-             PreparedStatement statement = connection.prepareStatement(sql);
-             ResultSet resultSet = statement.executeQuery()) {
-            while (resultSet.next()) {
-                employees.add(mapEmployee(resultSet));
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setInt(1, limit);
+            statement.setInt(2, offset);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                while (resultSet.next()) {
+                    employees.add(mapEmployee(resultSet));
+                }
             }
         } catch (SQLException e) {
             employees.clear();
             try (Connection connection = DBConfig.getConnection();
-                 PreparedStatement statement = connection.prepareStatement(fallbackSql);
-                 ResultSet resultSet = statement.executeQuery()) {
-                while (resultSet.next()) {
-                    Employee employee = mapEmployee(resultSet);
-                    if (employee.getStatus() == null) {
-                        employee.setStatus("Inactive");
+                 PreparedStatement statement = connection.prepareStatement(fallbackSql)) {
+                statement.setInt(1, limit);
+                statement.setInt(2, offset);
+                try (ResultSet resultSet = statement.executeQuery()) {
+                    while (resultSet.next()) {
+                        Employee employee = mapEmployee(resultSet);
+                        if (employee.getStatus() == null) {
+                            employee.setStatus("Inactive");
+                        }
+                        employees.add(employee);
                     }
-                    employees.add(employee);
                 }
             } catch (SQLException fallbackException) {
                 fallbackException.printStackTrace();
@@ -218,6 +244,10 @@ public class EmployeeService {
     }
 
     public List<Employee> searchEmployees(String query) {
+        return searchEmployees(query, 1000, 0);
+    }
+
+    public List<Employee> searchEmployees(String query, int limit, int offset) {
         List<Employee> employees = new ArrayList<>();
         String sql = "SELECT e.*, CASE WHEN a.check_in IS NOT NULL AND a.check_out IS NULL THEN 'Active' ELSE 'Inactive' END AS status "
                 + "FROM employees e "
@@ -226,13 +256,16 @@ public class EmployeeService {
                 + "  WHERE t.work_date = CURDATE() "
                 + "  AND t.check_in = (SELECT MAX(t2.check_in) FROM attendance t2 WHERE t2.user_id = t.user_id AND t2.work_date = CURDATE())"
                 + ") a ON a.user_id = e.user_id "
-                + "WHERE e.name LIKE ? OR e.email LIKE ?";
-        String fallbackSql = "SELECT * FROM employees WHERE name LIKE ? OR email LIKE ?";
+                + "WHERE e.name LIKE ? OR e.email LIKE ? "
+                + "ORDER BY e.name LIMIT ? OFFSET ?";
+        String fallbackSql = "SELECT * FROM employees WHERE name LIKE ? OR email LIKE ? ORDER BY name LIMIT ? OFFSET ?";
         try (Connection connection = DBConfig.getConnection();
              PreparedStatement statement = connection.prepareStatement(sql)) {
             String value = "%" + query + "%";
             statement.setString(1, value);
             statement.setString(2, value);
+            statement.setInt(3, limit);
+            statement.setInt(4, offset);
             try (ResultSet resultSet = statement.executeQuery()) {
                 while (resultSet.next()) {
                     employees.add(mapEmployee(resultSet));
@@ -245,6 +278,8 @@ public class EmployeeService {
                 String value = "%" + query + "%";
                 statement.setString(1, value);
                 statement.setString(2, value);
+                statement.setInt(3, limit);
+                statement.setInt(4, offset);
                 try (ResultSet resultSet = statement.executeQuery()) {
                     while (resultSet.next()) {
                         Employee employee = mapEmployee(resultSet);
@@ -259,6 +294,27 @@ public class EmployeeService {
             }
         }
         return employees;
+    }
+
+    public int getEmployeeCountByQuery(String query) {
+        if (query == null || query.trim().isEmpty()) {
+            return getEmployeeCount();
+        }
+        String sql = "SELECT COUNT(*) AS total FROM employees WHERE name LIKE ? OR email LIKE ?";
+        try (Connection connection = DBConfig.getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            String value = "%" + query.trim() + "%";
+            statement.setString(1, value);
+            statement.setString(2, value);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                if (resultSet.next()) {
+                    return resultSet.getInt("total");
+                }
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return 0;
     }
 
     private Employee mapEmployee(ResultSet resultSet) throws SQLException {
@@ -382,5 +438,37 @@ public class EmployeeService {
             e.printStackTrace();
         }
         return false;
+    }
+
+    public String validateEmployee(Employee employee) {
+        if (employee == null) {
+            return "Employee details are required.";
+        }
+        if (isBlank(employee.getName())) {
+            return "Name is required.";
+        }
+        if (isBlank(employee.getEmail()) || !isValidEmail(employee.getEmail())) {
+            return "Please enter a valid email address.";
+        }
+        if (isBlank(employee.getDepartment())) {
+            return "Department is required.";
+        }
+        String phone = employee.getPhone();
+        if (!isBlank(phone) && !isNumeric(phone)) {
+            return "Phone must contain digits only.";
+        }
+        return null;
+    }
+
+    private boolean isBlank(String value) {
+        return value == null || value.trim().isEmpty();
+    }
+
+    private boolean isNumeric(String value) {
+        return value != null && value.matches("\\d+");
+    }
+
+    private boolean isValidEmail(String value) {
+        return value != null && value.matches("^[A-Za-z0-9+_.-]+@[A-Za-z0-9.-]+$");
     }
 }
