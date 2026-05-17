@@ -5,6 +5,7 @@ import com.ems.model.Employee;
 import com.ems.model.User;
 import com.ems.service.AttendanceService;
 import com.ems.service.EmployeeService;
+import com.ems.service.NotificationService;
 import com.ems.service.PerformanceService;
 import com.ems.util.CsrfUtil;
 
@@ -23,6 +24,7 @@ public class EmployeeDashboardServlet extends HttpServlet {
     private final EmployeeService employeeService = new EmployeeService();
     private final AttendanceService attendanceService = new AttendanceService();
     private final PerformanceService performanceService = new PerformanceService();
+    private final NotificationService notificationService = new NotificationService();
 
     @Override
     protected void doGet(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
@@ -36,6 +38,10 @@ public class EmployeeDashboardServlet extends HttpServlet {
         User user = (User) session.getAttribute("user");
         if (user == null || !"EMPLOYEE".equalsIgnoreCase(user.getRole())) {
             response.sendRedirect(request.getContextPath() + "/dashboard");
+            return;
+        }
+        if (user.isMustChangePassword()) {
+            response.sendRedirect(request.getContextPath() + "/change-password");
             return;
         }
 
@@ -76,6 +82,11 @@ public class EmployeeDashboardServlet extends HttpServlet {
             request.setAttribute("lateToday", attendanceService.isLateToday(user.getId()));
             request.setAttribute("weeklyAttendance", attendanceService.getWeeklyAttendanceCount(user.getId()));
             request.setAttribute("performanceScore", performanceService.calculateScore(user.getId()));
+            request.setAttribute("performanceBreakdown", performanceService.getPerformanceBreakdown(user.getId()));
+            request.setAttribute("attendanceDiscipline", attendanceService.getDisciplineThisWeek(user.getId()));
+            request.setAttribute("currentStreak",     attendanceService.getCurrentStreak(user.getId()));
+            request.setAttribute("weeklyOvertimeMin", attendanceService.getOvertimeMinutesThisWeek(user.getId()));
+            request.setAttribute("notifications", notificationService.forEmployee(user.getId()));
         }
         RequestDispatcher dispatcher = request.getRequestDispatcher("/WEB-INF/pages/empDashboard.jsp");
         dispatcher.forward(request, response);

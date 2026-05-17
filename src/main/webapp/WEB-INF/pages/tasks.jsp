@@ -24,6 +24,8 @@
   int progress  = stats == null ? 0 : stats.getOrDefault("IN_PROGRESS", 0);
   int completed = stats == null ? 0 : stats.getOrDefault("COMPLETED",   0);
   int total     = pending + progress + completed;
+  String csrfToken = (String) request.getAttribute("csrfToken");
+  if (csrfToken == null) { csrfToken = ""; }
 %>
 <!DOCTYPE html>
 <html lang="en">
@@ -31,8 +33,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Tasks — EMS</title>
-  <link rel="stylesheet" href="${pageContext.request.contextPath}/css/style.css?v=1">
-  <link rel="stylesheet" href="${pageContext.request.contextPath}/assets/css/ems-ui.css?v=2">
+  <link rel="stylesheet" href="${pageContext.request.contextPath}/css/style.css?v=8">
+  <link rel="stylesheet" href="${pageContext.request.contextPath}/assets/css/ems-ui.css?v=8">
+  <script src="${pageContext.request.contextPath}/js/theme-init.js"></script>
   <% if ("ADMIN".equalsIgnoreCase(role)) { %>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <% } %>
@@ -61,21 +64,45 @@
         <span class="sb-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></span>
         <span class="sb-label">Employees</span>
       </a>
+      <a class="sb-link active" href="${pageContext.request.contextPath}/tasks" data-label="Tasks">
+        <span class="sb-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></span>
+        <span class="sb-label">Tasks</span>
+      </a>
+      <a class="sb-link" href="${pageContext.request.contextPath}/attendance" data-label="Attendance">
+        <span class="sb-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v4"/><path d="M16 2v4"/><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M3 10h18"/></svg></span>
+        <span class="sb-label">Attendance</span>
+      </a>
+      <a class="sb-link" href="${pageContext.request.contextPath}/analytics" data-label="Analytics">
+        <span class="sb-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 14l4-4 4 3 5-7"/></svg></span>
+        <span class="sb-label">Analytics</span>
+      </a>
+      <a class="sb-link" href="${pageContext.request.contextPath}/audit" data-label="Audit Logs">
+        <span class="sb-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="15" y2="17"/></svg></span>
+        <span class="sb-label">Audit Logs</span>
+      </a>
+      <a class="sb-link" href="${pageContext.request.contextPath}/leaves" data-label="Leaves">
+        <span class="sb-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><polyline points="9 16 11 18 15 14"/></svg></span>
+        <span class="sb-label">Leaves</span>
+      </a>
       <% } else { %>
       <a class="sb-link" href="${pageContext.request.contextPath}/emp-dashboard" data-label="Dashboard">
         <span class="sb-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg></span>
         <span class="sb-label">Dashboard</span>
       </a>
-      <% } %>
       <a class="sb-link active" href="${pageContext.request.contextPath}/tasks" data-label="Tasks">
         <span class="sb-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></span>
         <span class="sb-label">Tasks</span>
       </a>
+      <a class="sb-link" href="${pageContext.request.contextPath}/leaves" data-label="Leaves">
+        <span class="sb-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><polyline points="9 16 11 18 15 14"/></svg></span>
+        <span class="sb-label">Leaves</span>
+      </a>
+      <% } %>
     </nav>
       <div class="sb-foot">
       <form action="${pageContext.request.contextPath}/login" method="POST">
         <input type="hidden" name="action" value="logout">
-        <input type="hidden" name="csrfToken" value="<%= csrfToken %>">
+        <input type="hidden" name="csrfToken" value="<%= request.getAttribute("csrfToken") == null ? "" : request.getAttribute("csrfToken") %>">
         <button type="submit" class="sb-logout" data-label="Logout">
           <span class="sb-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg></span>
           <span class="sb-label">Logout</span>
@@ -104,6 +131,7 @@
             <div class="dd-divider"></div>
             <form action="${pageContext.request.contextPath}/login" method="POST">
               <input type="hidden" name="action" value="logout">
+              <input type="hidden" name="csrfToken" value="<%= request.getAttribute("csrfToken") == null ? "" : request.getAttribute("csrfToken") %>">
               <button type="submit" class="dd-item dd-item-danger">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
                 Sign out
@@ -245,9 +273,14 @@
             <tbody>
               <% if (tasks == null || tasks.isEmpty()) { %>
               <tr>
-                <td colspan="<%= "ADMIN".equalsIgnoreCase(role) ? "8" : "7" %>" class="dg-empty">
-                  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
-                  <div>No tasks found</div>
+                <td colspan="<%= "ADMIN".equalsIgnoreCase(role) ? "8" : "7" %>">
+                  <div class="empty-state">
+                    <div class="empty-state-icon">
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+                    </div>
+                    <div class="empty-state-title">No tasks yet</div>
+                    <div class="empty-state-msg"><%= "ADMIN".equalsIgnoreCase(role) ? "Assign the first task to get the workflow moving." : "Tasks assigned to you will appear here." %></div>
+                  </div>
                 </td>
               </tr>
               <% } else {
@@ -290,6 +323,7 @@
                   <form action="${pageContext.request.contextPath}/tasks" method="POST" class="inline-status-form">
                     <input type="hidden" name="action" value="update">
                     <input type="hidden" name="taskId" value="<%= task.getId() %>">
+                    <input type="hidden" name="csrfToken" value="<%= request.getAttribute("csrfToken") == null ? "" : request.getAttribute("csrfToken") %>">
                     <div class="input-btn-pair">
                       <select class="input input-sm" name="status">
                         <option value="PENDING"     <%= "PENDING".equals(st)     ? "selected" : "" %>>Pending</option>
@@ -326,6 +360,7 @@
     </div>
     <form action="${pageContext.request.contextPath}/tasks" method="POST">
       <input type="hidden" name="action" value="assign">
+      <input type="hidden" name="csrfToken" value="<%= request.getAttribute("csrfToken") == null ? "" : request.getAttribute("csrfToken") %>">
       <div class="modal-body">
         <div class="form-grid-2">
           <div class="field">

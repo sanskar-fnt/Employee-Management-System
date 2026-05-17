@@ -181,6 +181,105 @@ public class EmployeeService {
         return employees;
     }
 
+    public static class DeletionResult {
+        private final boolean success;
+        private final String  message;
+        public DeletionResult(boolean success, String message) {
+            this.success = success;
+            this.message = message;
+        }
+        public boolean isSuccess() { return success; }
+        public String  getMessage() { return message; }
+    }
+
+    /**
+     * Cascade-delete an employee atomically:
+     *   1. Reassign tasks AUTHORED by this user to the acting admin (preserves task history for other employees).
+     *   2. Delete tasks ASSIGNED TO this user.
+     *   3. Delete attendance rows for this user.
+     *   4. Delete the employee row.
+     *   5. Delete the user row.
+     * All steps share one connection inside a transaction. Any failure rolls back.
+     */
+    public DeletionResult deleteEmployeeAndCascade(int employeeId, int adminUserId) {
+        Integer userId = getUserIdByEmployeeId(employeeId);
+        if (userId == null) {
+            return new DeletionResult(false, "Employee not found or not linked to a user account.");
+        }
+        if (userId == adminUserId) {
+            return new DeletionResult(false, "You cannot delete your own account.");
+        }
+
+        Connection connection = null;
+        try {
+            connection = DBConfig.getConnection();
+            connection.setAutoCommit(false);
+
+            // 1. Re-authorize tasks created by this user to the acting admin (skip self-assigned ones,
+            //    those are handled by the next step).
+            try (PreparedStatement ps = connection.prepareStatement(
+                    "UPDATE tasks SET assigned_by=? WHERE assigned_by=? AND assigned_to<>?")) {
+                ps.setInt(1, adminUserId);
+                ps.setInt(2, userId);
+                ps.setInt(3, userId);
+                ps.executeUpdate();
+            }
+
+            // 2. Delete tasks assigned to this user (no other owner possible).
+            try (PreparedStatement ps = connection.prepareStatement(
+                    "DELETE FROM tasks WHERE assigned_to=?")) {
+                ps.setInt(1, userId);
+                ps.executeUpdate();
+            }
+
+            // 3. Delete attendance rows for this user.
+            try (PreparedStatement ps = connection.prepareStatement(
+                    "DELETE FROM attendance WHERE user_id=?")) {
+                ps.setInt(1, userId);
+                ps.executeUpdate();
+            }
+
+            // 4. Delete the employee row.
+            int empAffected;
+            try (PreparedStatement ps = connection.prepareStatement(
+                    "DELETE FROM employees WHERE id=?")) {
+                ps.setInt(1, employeeId);
+                empAffected = ps.executeUpdate();
+            }
+            if (empAffected == 0) {
+                connection.rollback();
+                return new DeletionResult(false, "Employee record was not removed.");
+            }
+
+            // 5. Delete the user row.
+            int userAffected;
+            try (PreparedStatement ps = connection.prepareStatement(
+                    "DELETE FROM users WHERE id=?")) {
+                ps.setInt(1, userId);
+                userAffected = ps.executeUpdate();
+            }
+            if (userAffected == 0) {
+                connection.rollback();
+                return new DeletionResult(false, "Linked user account was not removed.");
+            }
+
+            connection.commit();
+            return new DeletionResult(true, "Employee and all linked records deleted.");
+        } catch (SQLException e) {
+            e.printStackTrace();
+            if (connection != null) {
+                try { connection.rollback(); } catch (SQLException ignored) {}
+            }
+            return new DeletionResult(false,
+                    "Could not delete employee: " + (e.getMessage() == null ? "database error." : e.getMessage()));
+        } finally {
+            if (connection != null) {
+                try { connection.setAutoCommit(true); } catch (SQLException ignored) {}
+                try { connection.close(); } catch (SQLException ignored) {}
+            }
+        }
+    }
+
     public boolean deleteEmployee(int id) {
         String sql = "DELETE FROM employees WHERE id=?";
         try (Connection connection = DBConfig.getConnection();
@@ -373,7 +472,7 @@ public class EmployeeService {
 
     public List<AttendanceRow> getTodayAttendance() {
         List<AttendanceRow> rows = new ArrayList<>();
-        String sql = "SELECT e.id, e.name, e.email, e.department, "
+        String sql = "SELECT e.id, e.user_id AS user_id, e.name, e.email, e.department, "
                 + "CASE WHEN a.check_in IS NOT NULL AND a.check_out IS NULL THEN 'Active' ELSE 'Inactive' END AS attendance_status, "
                 + "a.work_date, a.check_in, a.check_out "
                 + "FROM employees e "
@@ -411,14 +510,19 @@ public class EmployeeService {
     private AttendanceRow mapAttendanceRow(ResultSet resultSet) throws SQLException {
         AttendanceRow row = new AttendanceRow();
         row.setEmployeeId(resultSet.getInt("id"));
+        try {
+            int uid = resultSet.getInt("user_id");
+            row.setUserId(resultSet.wasNull() ? null : uid);
+        } catch (SQLException ignored) { row.setUserId(null); }
         row.setName(resultSet.getString("name"));
         row.setEmail(resultSet.getString("email"));
         row.setDepartment(resultSet.getString("department"));
         row.setAttendanceStatus(resultSet.getString("attendance_status"));
         try {
-            row.setWorkDate(resultSet.getDate("work_date"));
+            java.sql.Date wd = resultSet.getDate("work_date");
+            row.setWorkDate(wd == null ? java.sql.Date.valueOf(java.time.LocalDate.now()) : wd);
         } catch (SQLException ignored) {
-            row.setWorkDate(null);
+            row.setWorkDate(java.sql.Date.valueOf(java.time.LocalDate.now()));
         }
         java.sql.Timestamp checkIn = resultSet.getTimestamp("check_in");
         java.sql.Timestamp checkOut = resultSet.getTimestamp("check_out");

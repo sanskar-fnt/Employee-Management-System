@@ -5,8 +5,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>404 — EMS</title>
-  <link rel="stylesheet" href="${pageContext.request.contextPath}/css/style.css?v=1">
-  <link rel="stylesheet" href="${pageContext.request.contextPath}/assets/css/ems-ui.css?v=2">
+  <link rel="stylesheet" href="${pageContext.request.contextPath}/css/style.css?v=8">
+  <link rel="stylesheet" href="${pageContext.request.contextPath}/assets/css/ems-ui.css?v=8">
+  <script src="${pageContext.request.contextPath}/js/theme-init.js"></script>
 </head>
 <body>
 <div class="error-shell">

@@ -23,6 +23,8 @@
     initials = user.getUsername().substring(0, 1).toUpperCase();
   Map<Integer, Integer> attendanceCounts = (Map<Integer, Integer>) request.getAttribute("attendanceCounts");
   int totalCount = list == null ? 0 : list.size();
+  String csrfToken = (String) request.getAttribute("csrfToken");
+  if (csrfToken == null) { csrfToken = ""; }
 %>
 <%!
   private String esc(String v) {
@@ -36,8 +38,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Employees — EMS</title>
-  <link rel="stylesheet" href="${pageContext.request.contextPath}/css/style.css?v=1">
-  <link rel="stylesheet" href="${pageContext.request.contextPath}/assets/css/ems-ui.css?v=2">
+  <link rel="stylesheet" href="${pageContext.request.contextPath}/css/style.css?v=8">
+  <link rel="stylesheet" href="${pageContext.request.contextPath}/assets/css/ems-ui.css?v=8">
+  <script src="${pageContext.request.contextPath}/js/theme-init.js"></script>
 </head>
 <body>
 <div class="app-layout">
@@ -67,6 +70,12 @@
         <span class="nav-ic"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v4"/><path d="M16 2v4"/><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M3 10h18"/></svg></span>
         <span class="nav-tx">Attendance</span>
       </a>
+      <a class="nav-item" href="${pageContext.request.contextPath}/analytics" data-label="Analytics"><span class="nav-ic"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 14l4-4 4 3 5-7"/></svg></span><span class="nav-tx">Analytics</span></a>
+      <a class="nav-item" href="${pageContext.request.contextPath}/audit" data-label="Audit Logs">
+        <span class="nav-ic"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="15" y2="17"/></svg></span>
+        <span class="nav-tx">Audit Logs</span>
+      </a>
+      <a class="nav-item" href="${pageContext.request.contextPath}/leaves" data-label="Leaves"><span class="nav-ic"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><polyline points="9 16 11 18 15 14"/></svg></span><span class="nav-tx">Leaves</span></a>
     </nav>
     <div class="sb-ft">
       <form action="${pageContext.request.contextPath}/login" method="POST">
@@ -108,8 +117,8 @@
               <div class="dd-section-sub">Administrator</div>
             </div>
             <div class="dd-sep"></div>
-            <a class="dd-item" href="#">Profile</a>
-            <a class="dd-item" href="#">Settings</a>
+            <a class="dd-item" href="${pageContext.request.contextPath}/<%= user.getEmployeeId() == null ? "employees" : ("employees/profile?id=" + user.getEmployeeId()) %>">Profile</a>
+            <a class="dd-item" href="${pageContext.request.contextPath}/change-password">Settings</a>
           </div>
         </div>
         <button type="button" class="btn btn-primary btn-sm" data-modal-open="addEmpModal">
@@ -193,15 +202,18 @@
                     <td><span class="badge badge-info"><%= count %> days</span></td>
                     <td>
                       <div class="row-actions action-row">
+                        <a class="btn btn-secondary btn-xs" href="${pageContext.request.contextPath}/employees/profile?id=<%= emp.getId() %>">View</a>
                         <button type="button" class="btn btn-secondary btn-xs btn-edit-emp" data-id="<%= emp.getId() %>">Edit</button>
-                        <form id="update-<%= emp.getId() %>" action="${pageContext.request.contextPath}/employees" method="POST" style="display:inline;">
-                          <input type="hidden" name="action" value="update">
-                          <input type="hidden" name="id"     value="<%= emp.getId() %>">
+                                                              <form id="update-<%= emp.getId() %>" action="${pageContext.request.contextPath}/employees" method="POST" style="display:inline;">
+                                                                <input type="hidden" name="action" value="update">
+                                                                <input type="hidden" name="id"     value="<%= emp.getId() %>">
+                                                                <input type="hidden" name="csrfToken" value="<%= request.getAttribute("csrfToken") == null ? "" : request.getAttribute("csrfToken") %>">
                           <button type="submit" class="btn btn-primary btn-xs">Save</button>
                         </form>
-                        <form action="${pageContext.request.contextPath}/employees" method="POST" style="display:inline;" onsubmit="return confirm('Delete this employee?');">
-                          <input type="hidden" name="action" value="delete">
-                          <input type="hidden" name="id"     value="<%= emp.getId() %>">
+                          <form action="${pageContext.request.contextPath}/employees" method="POST" style="display:inline;" onsubmit="return confirm('Delete this employee?');">
+                            <input type="hidden" name="action" value="delete">
+                            <input type="hidden" name="id"     value="<%= emp.getId() %>">
+                            <input type="hidden" name="csrfToken" value="<%= request.getAttribute("csrfToken") == null ? "" : request.getAttribute("csrfToken") %>">
                           <button type="submit" class="btn btn-danger btn-xs">Delete</button>
                         </form>
                       </div>
@@ -225,22 +237,22 @@
 <div class="modal-bd" id="addEmpModal">
   <div class="modal-box">
     <div class="modal-hd">
-      <div class="modal-title">Add New Employee</div>
+      <div>
+        <div class="modal-title">Add New Employee</div>
+        <div class="card-subtitle" style="margin-top:4px;">A temporary password will be auto-generated and emailed to the new employee.</div>
+      </div>
       <button type="button" class="modal-close" data-modal-close aria-label="Close">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
     </div>
     <div class="modal-content">
-      <form id="addEmpForm" action="${pageContext.request.contextPath}/employees" method="POST">
-        <input type="hidden" name="action" value="add">
+        <form id="addEmpForm" action="${pageContext.request.contextPath}/employees" method="POST">
+          <input type="hidden" name="action" value="add">
+          <input type="hidden" name="csrfToken" value="<%= request.getAttribute("csrfToken") == null ? "" : request.getAttribute("csrfToken") %>">
         <div class="form-grid">
           <div class="field">
             <label class="field-label" for="modal-username">Username</label>
             <input class="input" type="text"     id="modal-username"   name="username"   required placeholder="e.g. john.doe">
-          </div>
-          <div class="field">
-            <label class="field-label" for="modal-password">Password</label>
-            <input class="input" type="password" id="modal-password"   name="password"   required placeholder="Min. 8 characters">
           </div>
           <div class="field">
             <label class="field-label" for="modal-name">Full Name</label>

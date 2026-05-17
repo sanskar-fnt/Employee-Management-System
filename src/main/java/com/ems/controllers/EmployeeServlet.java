@@ -5,7 +5,11 @@ import com.ems.model.User;
 import com.ems.service.EmployeeService;
 import com.ems.service.UserService;
 import com.ems.service.AttendanceService;
+import com.ems.service.AuditService;
+import com.ems.service.EmailService;
+import com.ems.service.NotificationService;
 import com.ems.util.CsrfUtil;
+import com.ems.util.PasswordUtil;
 
 import jakarta.servlet.RequestDispatcher;
 import jakarta.servlet.ServletException;
@@ -26,6 +30,9 @@ public class EmployeeServlet extends HttpServlet {
     private final EmployeeService employeeService = new EmployeeService();
     private final UserService userService = new UserService();
     private final AttendanceService attendanceService = new AttendanceService();
+    private final EmailService emailService = new EmailService();
+    private final AuditService auditService = new AuditService();
+    private final NotificationService notificationService = new NotificationService();
 
     @Override
     protected void doGet(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
@@ -105,16 +112,19 @@ public class EmployeeServlet extends HttpServlet {
 
         if (action.equals("add")) {
             String username = request.getParameter("username");
-            String password = request.getParameter("password");
             String name = request.getParameter("name");
             String email = request.getParameter("email");
             String phone = request.getParameter("phone");
             String department = request.getParameter("department");
 
+            // Onboarding: admin no longer enters a password — system generates a temporary one.
+            String tempPassword = PasswordUtil.generateTempPassword();
+
             User newUser = new User();
             newUser.setUsername(username == null ? null : username.trim());
-            newUser.setPassword(password == null ? null : password.trim());
+            newUser.setPassword(tempPassword);
             newUser.setRole("EMPLOYEE");
+            newUser.setMustChangePassword(true);
             String userError = userService.validateNewUser(newUser);
             if (userError != null) {
                 session.setAttribute("formError", userError);
@@ -154,7 +164,36 @@ public class EmployeeServlet extends HttpServlet {
                 response.sendRedirect(request.getContextPath() + "/employees");
                 return;
             }
-            session.setAttribute("successMessage", "Employee created successfully.");
+
+            // Onboarding email — best effort, does NOT roll back the new employee.
+            System.out.println("[Onboarding] Employee created (id=" + userId + " email=" + employee.getEmail()
+                    + "). Dispatching welcome email...");
+            boolean mailed = false;
+            try {
+                String subject = "Welcome to EMS — your account is ready";
+                String body =
+                        "Hi " + (employee.getName() == null ? "there" : employee.getName()) + ",\n\n" +
+                        "Your Employee Management System account has been created.\n\n" +
+                        "  Username: " + newUser.getUsername() + "\n" +
+                        "  Temporary password: " + tempPassword + "\n\n" +
+                        "On first login you will be asked to set a new password.\n\n" +
+                        "— EMS Team";
+                mailed = emailService.sendEmail(employee.getEmail(), subject, body);
+            } catch (Exception ex) {
+                System.out.println("[Onboarding] Email dispatch threw: " + ex.getMessage());
+                ex.printStackTrace();
+            }
+            System.out.println("[Onboarding] Email dispatch result for " + employee.getEmail() + ": " + mailed);
+
+            session.setAttribute("successMessage", mailed
+                    ? "Employee created successfully. Onboarding email sent."
+                    : "Employee created successfully. (Onboarding email could not be sent — see server log.)");
+            User actor0 = (User) session.getAttribute("user");
+            auditService.log(actor0 == null ? null : actor0.getId(),
+                    AuditService.EMPLOYEE_CREATE, "EMPLOYEE", null,
+                    "username=" + newUser.getUsername() + " email=" + employee.getEmail()
+                          + " mailed=" + mailed);
+            notificationService.notifyEmployeeCreated(userId, employee.getName(), employee.getEmail());
             response.sendRedirect(request.getContextPath() + "/employees");
             return;
         }
@@ -195,6 +234,11 @@ public class EmployeeServlet extends HttpServlet {
                 boolean updated = employeeService.updateEmployee(employee);
                 if (updated) {
                     session.setAttribute("successMessage", "Employee updated successfully.");
+                    User actorU = (User) session.getAttribute("user");
+                    auditService.log(actorU == null ? null : actorU.getId(),
+                            AuditService.EMPLOYEE_UPDATE, "EMPLOYEE", id,
+                            "name=" + employee.getName() + " email=" + employee.getEmail()
+                                  + " dept=" + employee.getDepartment());
                 } else {
                     session.setAttribute("formError", "Unable to update employee.");
                 }
@@ -214,13 +258,18 @@ public class EmployeeServlet extends HttpServlet {
                     response.sendRedirect(request.getContextPath() + "/employees");
                     return;
                 }
-                Integer userId = employeeService.getUserIdByEmployeeId(id);
-                boolean deleted = employeeService.deleteEmployee(id);
-                if (deleted && userId != null) {
-                    userService.deleteUserById(userId);
+                com.ems.model.User actingUser = (com.ems.model.User) session.getAttribute("user");
+                int adminUserId = actingUser == null ? 0 : actingUser.getId();
+                EmployeeService.DeletionResult result =
+                        employeeService.deleteEmployeeAndCascade(id, adminUserId);
+                if (result.isSuccess()) {
+                    session.setAttribute("successMessage", "Employee deleted successfully.");
+                    auditService.log(adminUserId,
+                            AuditService.EMPLOYEE_DELETE, "EMPLOYEE", id,
+                            "cascade delete by admin#" + adminUserId);
+                } else {
+                    session.setAttribute("formError", result.getMessage());
                 }
-                session.setAttribute(deleted ? "successMessage" : "formError",
-                        deleted ? "Employee deleted successfully." : "Unable to delete employee.");
             }
             response.sendRedirect(request.getContextPath() + "/employees");
         } else {

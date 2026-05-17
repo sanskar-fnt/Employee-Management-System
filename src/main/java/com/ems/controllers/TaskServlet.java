@@ -3,6 +3,7 @@ package com.ems.controllers;
 import com.ems.model.Employee;
 import com.ems.model.Task;
 import com.ems.model.User;
+import com.ems.service.AuditService;
 import com.ems.service.EmployeeService;
 import com.ems.service.TaskService;
 import com.ems.util.CsrfUtil;
@@ -23,6 +24,7 @@ public class TaskServlet extends HttpServlet {
 
     private final TaskService taskService = new TaskService();
     private final EmployeeService employeeService = new EmployeeService();
+    private final AuditService auditService = new AuditService();
 
     @Override
     protected void doGet(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
@@ -184,6 +186,11 @@ public class TaskServlet extends HttpServlet {
 
         TaskService.TaskActionResult result = taskService.attemptAssignTask(task);
         session.setAttribute(result.isSuccess() ? "taskSuccess" : "taskError", result.getMessage());
+        if (result.isSuccess()) {
+            auditService.log(task.getAssignedBy(), AuditService.TASK_ASSIGN, "TASK", null,
+                    "title=" + task.getTitle() + " assigned_to=" + task.getAssignedTo()
+                          + " priority=" + task.getPriority());
+        }
     }
 
     private void handleUpdateStatus(HttpServletRequest request, HttpSession session, User user) {
@@ -202,8 +209,13 @@ public class TaskServlet extends HttpServlet {
             return;
         }
 
-        TaskService.TaskActionResult result = taskService.attemptStatusUpdate(taskId, user.getId(), status.trim().toUpperCase());
+        String upper = status.trim().toUpperCase();
+        TaskService.TaskActionResult result = taskService.attemptStatusUpdate(taskId, user.getId(), upper);
         session.setAttribute(result.isSuccess() ? "taskSuccess" : "taskError", result.getMessage());
+        if (result.isSuccess()) {
+            auditService.log(user.getId(), AuditService.TASK_UPDATE, "TASK", taskId,
+                    "status=" + upper);
+        }
     }
 
     private boolean isBlank(String value) {

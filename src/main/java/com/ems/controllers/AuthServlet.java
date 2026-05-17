@@ -1,6 +1,7 @@
 package com.ems.controllers;
 
 import com.ems.model.User;
+import com.ems.service.AuditService;
 import com.ems.service.UserService;
 import com.ems.util.CsrfUtil;
 
@@ -16,7 +17,8 @@ import java.io.IOException;
 @WebServlet("/login")
 public class AuthServlet extends HttpServlet {
 
-    private final UserService userService = new UserService();
+    private final UserService  userService  = new UserService();
+    private final AuditService auditService = new AuditService();
 
     @Override
     protected void doGet(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
@@ -61,6 +63,10 @@ public class AuthServlet extends HttpServlet {
 
         if (action != null && action.equals("logout")) {
             if (session != null) {
+                User actor = (User) session.getAttribute("user");
+                if (actor != null) {
+                    auditService.log(actor.getId(), AuditService.LOGOUT, "USER", actor.getId(), "user=" + actor.getUsername());
+                }
                 session.invalidate();
             }
             response.sendRedirect(request.getContextPath() + "/login");
@@ -80,6 +86,7 @@ public class AuthServlet extends HttpServlet {
             response.sendRedirect(request.getContextPath() + "/login");
             return;
         }
+
         User user = userService.authenticate(username, password);
 
         if (user != null) {
@@ -92,6 +99,16 @@ public class AuthServlet extends HttpServlet {
             CsrfUtil.ensureCookie(request, response);
             newSession.setAttribute("user", user);
             newSession.setMaxInactiveInterval(1800);
+
+            auditService.log(user.getId(), AuditService.LOGIN, "USER", user.getId(),
+                    "user=" + user.getUsername() + " role=" + user.getRole());
+
+            // First-login gate: must change the temporary password before going anywhere else.
+            if (user.isMustChangePassword()) {
+                response.sendRedirect(request.getContextPath() + "/change-password");
+                return;
+            }
+
             if ("EMPLOYEE".equalsIgnoreCase(user.getRole())) {
                 com.ems.service.EmployeeService employeeService = new com.ems.service.EmployeeService();
                 com.ems.model.Employee employee = employeeService.getByUserId(user.getId());
@@ -105,6 +122,8 @@ public class AuthServlet extends HttpServlet {
                 response.sendRedirect(request.getContextPath() + "/dashboard");
             }
         } else {
+            auditService.log(null, AuditService.LOGIN_FAILED, "USER", null,
+                    "username=" + (username == null ? "" : username));
             HttpSession newSession = request.getSession(true);
             newSession.setAttribute("loginError", "Invalid username, password, or role.");
             response.sendRedirect(request.getContextPath() + "/login");

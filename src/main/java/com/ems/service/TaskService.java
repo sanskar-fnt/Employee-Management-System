@@ -288,6 +288,48 @@ public class TaskService {
         return 0;
     }
 
+    public int getOverdueTaskCountForEmployee(int userId) {
+        String sql = "SELECT COUNT(*) AS total FROM tasks WHERE assigned_to=? AND due_date IS NOT NULL "
+                + "AND due_date < CURDATE() AND status <> 'COMPLETED'";
+        try (Connection connection = DBConfig.getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setInt(1, userId);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                if (resultSet.next()) return resultSet.getInt("total");
+            }
+        } catch (SQLException e) { e.printStackTrace(); }
+        return 0;
+    }
+
+    public int getOverdueTaskCount() {
+        String sql = "SELECT COUNT(*) AS total FROM tasks WHERE due_date IS NOT NULL "
+                + "AND due_date < CURDATE() AND status <> 'COMPLETED'";
+        try (Connection connection = DBConfig.getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql);
+             ResultSet resultSet = statement.executeQuery()) {
+            if (resultSet.next()) return resultSet.getInt("total");
+        } catch (SQLException e) { e.printStackTrace(); }
+        return 0;
+    }
+
+    public java.util.Map<String, Integer> getStatusCountsForEmployee(int userId) {
+        java.util.Map<String, Integer> counts = new java.util.HashMap<>();
+        counts.put("PENDING", 0);
+        counts.put("IN_PROGRESS", 0);
+        counts.put("COMPLETED", 0);
+        String sql = "SELECT status, COUNT(*) AS c FROM tasks WHERE assigned_to=? GROUP BY status";
+        try (Connection connection = DBConfig.getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setInt(1, userId);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                while (resultSet.next()) {
+                    counts.put(resultSet.getString("status"), resultSet.getInt("c"));
+                }
+            }
+        } catch (SQLException e) { e.printStackTrace(); }
+        return counts;
+    }
+
     public boolean updateTaskStatus(int taskId, String status) {
         String currentStatus = getTaskStatus(taskId);
         if (validateStatusTransition(currentStatus, status) != null) {

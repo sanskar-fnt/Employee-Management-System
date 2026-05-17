@@ -18,6 +18,12 @@ import com.ems.model.AttendanceSnapshot;
 
 public class AttendanceService {
 
+    public static final LocalTime WORK_START      = LocalTime.of(9, 0);
+    public static final LocalTime LATE_THRESHOLD  = LocalTime.of(9, 15);
+    public static final LocalTime WORK_END        = LocalTime.of(17, 0);
+    private static final String LATE_TIME_SQL       = "09:15:00";
+    private static final String EARLY_LEAVE_TIME_SQL = "17:00:00";
+
     public static class AttendanceActionResult {
         private final boolean success;
         private final String message;
@@ -218,7 +224,7 @@ public class AttendanceService {
 
     public java.util.List<com.ems.model.AttendanceRow> getRecentAttendance(int limit) {
         java.util.List<com.ems.model.AttendanceRow> rows = new java.util.ArrayList<>();
-        String sql = "SELECT e.id, e.name, e.email, e.department, a.work_date, a.check_in, a.check_out, "
+        String sql = "SELECT e.id, a.user_id, e.name, e.email, e.department, a.work_date, a.check_in, a.check_out, "
                 + "CASE WHEN a.check_in IS NOT NULL AND a.check_out IS NULL THEN 'Active' ELSE 'Inactive' END AS attendance_status "
                 + "FROM attendance a "
                 + "JOIN employees e ON e.user_id = a.user_id "
@@ -231,6 +237,7 @@ public class AttendanceService {
                 while (resultSet.next()) {
                     com.ems.model.AttendanceRow row = new com.ems.model.AttendanceRow();
                     row.setEmployeeId(resultSet.getInt("id"));
+                    int __uid = resultSet.getInt("user_id"); row.setUserId(resultSet.wasNull() ? null : __uid);
                     row.setName(resultSet.getString("name"));
                     row.setEmail(resultSet.getString("email"));
                     row.setDepartment(resultSet.getString("department"));
@@ -254,7 +261,7 @@ public class AttendanceService {
         if (startDate == null || endDate == null) {
             return getRecentAttendance(10);
         }
-        String sql = "SELECT e.id, e.name, e.email, e.department, a.work_date, a.check_in, a.check_out, "
+        String sql = "SELECT e.id, a.user_id, e.name, e.email, e.department, a.work_date, a.check_in, a.check_out, "
                 + "CASE WHEN a.check_in IS NOT NULL AND a.check_out IS NULL THEN 'Active' ELSE 'Inactive' END AS attendance_status "
                 + "FROM attendance a "
                 + "JOIN employees e ON e.user_id = a.user_id "
@@ -268,6 +275,7 @@ public class AttendanceService {
                 while (resultSet.next()) {
                     com.ems.model.AttendanceRow row = new com.ems.model.AttendanceRow();
                     row.setEmployeeId(resultSet.getInt("id"));
+                    int __uid = resultSet.getInt("user_id"); row.setUserId(resultSet.wasNull() ? null : __uid);
                     row.setName(resultSet.getString("name"));
                     row.setEmail(resultSet.getString("email"));
                     row.setDepartment(resultSet.getString("department"));
@@ -291,7 +299,7 @@ public class AttendanceService {
         if (startDate == null || endDate == null) {
             return getRecentAttendance(limit);
         }
-        String sql = "SELECT e.id, e.name, e.email, e.department, a.work_date, a.check_in, a.check_out, "
+        String sql = "SELECT e.id, a.user_id, e.name, e.email, e.department, a.work_date, a.check_in, a.check_out, "
                 + "CASE WHEN a.check_in IS NOT NULL AND a.check_out IS NULL THEN 'Active' ELSE 'Inactive' END AS attendance_status "
                 + "FROM attendance a "
                 + "JOIN employees e ON e.user_id = a.user_id "
@@ -307,6 +315,7 @@ public class AttendanceService {
                 while (resultSet.next()) {
                     com.ems.model.AttendanceRow row = new com.ems.model.AttendanceRow();
                     row.setEmployeeId(resultSet.getInt("id"));
+                    int __uid = resultSet.getInt("user_id"); row.setUserId(resultSet.wasNull() ? null : __uid);
                     row.setName(resultSet.getString("name"));
                     row.setEmail(resultSet.getString("email"));
                     row.setDepartment(resultSet.getString("department"));
@@ -373,7 +382,7 @@ public class AttendanceService {
 
     public java.util.List<com.ems.model.AttendanceRow> getAttendanceHistoryForUser(int userId, int limit) {
         java.util.List<com.ems.model.AttendanceRow> rows = new java.util.ArrayList<>();
-        String sql = "SELECT e.id, e.name, e.email, e.department, a.work_date, a.check_in, a.check_out, "
+        String sql = "SELECT e.id, a.user_id, e.name, e.email, e.department, a.work_date, a.check_in, a.check_out, "
                 + "CASE WHEN a.check_in IS NOT NULL AND a.check_out IS NULL THEN 'Active' ELSE 'Inactive' END AS attendance_status "
                 + "FROM attendance a "
                 + "JOIN employees e ON e.user_id = a.user_id "
@@ -388,6 +397,7 @@ public class AttendanceService {
                 while (resultSet.next()) {
                     com.ems.model.AttendanceRow row = new com.ems.model.AttendanceRow();
                     row.setEmployeeId(resultSet.getInt("id"));
+                    int __uid = resultSet.getInt("user_id"); row.setUserId(resultSet.wasNull() ? null : __uid);
                     row.setName(resultSet.getString("name"));
                     row.setEmail(resultSet.getString("email"));
                     row.setDepartment(resultSet.getString("department"));
@@ -445,7 +455,7 @@ public class AttendanceService {
                         return false;
                     }
                     LocalTime checkInTime = checkIn.toLocalDateTime().toLocalTime();
-                    return checkInTime.isAfter(LocalTime.of(9, 30));
+                    return checkInTime.isAfter(LATE_THRESHOLD);
                 }
             }
         } catch (SQLException e) {
@@ -477,7 +487,7 @@ public class AttendanceService {
     public int getLateDaysThisWeek(int userId) {
         LocalDate end = LocalDate.now();
         LocalDate start = end.minusDays(6);
-        String sql = "SELECT COUNT(*) AS total FROM attendance WHERE user_id=? AND work_date BETWEEN ? AND ? AND TIME(check_in) > '09:30:00'";
+        String sql = "SELECT COUNT(*) AS total FROM attendance WHERE user_id=? AND work_date BETWEEN ? AND ? AND TIME(check_in) > '" + LATE_TIME_SQL + "'";
         try (Connection connection = DBConfig.getConnection();
              PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setInt(1, userId);
@@ -497,7 +507,7 @@ public class AttendanceService {
     public List<com.ems.model.AttendanceRow> getAttendanceRecords(LocalDate date, Integer employeeId, int limit, int offset) {
         List<com.ems.model.AttendanceRow> rows = new ArrayList<>();
         StringBuilder sql = new StringBuilder();
-        sql.append("SELECT e.id, e.name, e.email, e.department, a.work_date, a.check_in, a.check_out, ")
+        sql.append("SELECT e.id, a.user_id, e.name, e.email, e.department, a.work_date, a.check_in, a.check_out, ")
            .append("CASE WHEN a.check_in IS NOT NULL AND a.check_out IS NULL THEN 'Active' ELSE 'Inactive' END AS attendance_status ")
            .append("FROM attendance a ")
            .append("JOIN employees e ON e.user_id = a.user_id ");
@@ -526,6 +536,7 @@ public class AttendanceService {
                 while (resultSet.next()) {
                     com.ems.model.AttendanceRow row = new com.ems.model.AttendanceRow();
                     row.setEmployeeId(resultSet.getInt("id"));
+                    int __uid = resultSet.getInt("user_id"); row.setUserId(resultSet.wasNull() ? null : __uid);
                     row.setName(resultSet.getString("name"));
                     row.setEmail(resultSet.getString("email"));
                     row.setDepartment(resultSet.getString("department"));
@@ -573,5 +584,152 @@ public class AttendanceService {
             e.printStackTrace();
         }
         return 0;
+    }
+
+    public int getEarlyLeaveDaysThisWeek(int userId) {
+        LocalDate end = LocalDate.now();
+        LocalDate start = end.minusDays(6);
+        String sql = "SELECT COUNT(*) AS total FROM attendance WHERE user_id=? AND work_date BETWEEN ? AND ? "
+                + "AND check_out IS NOT NULL AND TIME(check_out) < '" + EARLY_LEAVE_TIME_SQL + "'";
+        try (Connection connection = DBConfig.getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setInt(1, userId);
+            statement.setDate(2, Date.valueOf(start));
+            statement.setDate(3, Date.valueOf(end));
+            try (ResultSet resultSet = statement.executeQuery()) {
+                if (resultSet.next()) {
+                    return resultSet.getInt("total");
+                }
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return 0;
+    }
+
+    public java.util.List<int[]> getDailyAttendanceCounts(int days) {
+        java.util.List<int[]> result = new java.util.ArrayList<>();
+        if (days <= 0) return result;
+        LocalDate end = LocalDate.now();
+        LocalDate start = end.minusDays(days - 1L);
+        java.util.Map<LocalDate, Integer> map = new java.util.HashMap<>();
+        String sql = "SELECT work_date, COUNT(DISTINCT user_id) AS c FROM attendance "
+                + "WHERE work_date BETWEEN ? AND ? GROUP BY work_date";
+        try (Connection connection = DBConfig.getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setDate(1, Date.valueOf(start));
+            statement.setDate(2, Date.valueOf(end));
+            try (ResultSet rs = statement.executeQuery()) {
+                while (rs.next()) {
+                    map.put(rs.getDate("work_date").toLocalDate(), rs.getInt("c"));
+                }
+            }
+        } catch (SQLException e) { e.printStackTrace(); }
+        for (int i = 0; i < days; i++) {
+            LocalDate d = start.plusDays(i);
+            result.add(new int[]{ (int) d.toEpochDay(), map.getOrDefault(d, 0) });
+        }
+        return result;
+    }
+
+    public int getLateCountForUserInRange(int userId, LocalDate start, LocalDate end) {
+        if (start == null || end == null) return 0;
+        String sql = "SELECT COUNT(*) AS total FROM attendance WHERE user_id=? AND work_date BETWEEN ? AND ? "
+                + "AND TIME(check_in) > '" + LATE_TIME_SQL + "'";
+        try (Connection connection = DBConfig.getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setInt(1, userId);
+            statement.setDate(2, Date.valueOf(start));
+            statement.setDate(3, Date.valueOf(end));
+            try (ResultSet rs = statement.executeQuery()) {
+                if (rs.next()) return rs.getInt("total");
+            }
+        } catch (SQLException e) { e.printStackTrace(); }
+        return 0;
+    }
+
+    /** Overtime worked this week, in minutes (any check_out beyond WORK_END, summed). */
+    public long getOvertimeMinutesThisWeek(int userId) {
+        LocalDate end = LocalDate.now();
+        LocalDate start = end.minusDays(6);
+        String sql = "SELECT check_out FROM attendance WHERE user_id=? AND work_date BETWEEN ? AND ? "
+                + "AND check_out IS NOT NULL";
+        long total = 0;
+        try (Connection connection = DBConfig.getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setInt(1, userId);
+            statement.setDate(2, Date.valueOf(start));
+            statement.setDate(3, Date.valueOf(end));
+            try (ResultSet rs = statement.executeQuery()) {
+                while (rs.next()) {
+                    java.sql.Timestamp out = rs.getTimestamp("check_out");
+                    if (out == null) continue;
+                    LocalTime t = out.toLocalDateTime().toLocalTime();
+                    if (t.isAfter(WORK_END)) {
+                        total += Duration.between(WORK_END, t).toMinutes();
+                    }
+                }
+            }
+        } catch (SQLException e) { e.printStackTrace(); }
+        return total;
+    }
+
+    /** Consecutive distinct working days ending today (or yesterday if no entry today). */
+    public int getCurrentStreak(int userId) {
+        String sql = "SELECT DISTINCT work_date FROM attendance WHERE user_id=? "
+                + "ORDER BY work_date DESC LIMIT 60";
+        try (Connection connection = DBConfig.getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setInt(1, userId);
+            try (ResultSet rs = statement.executeQuery()) {
+                LocalDate today = LocalDate.now();
+                LocalDate expected = null;
+                int streak = 0;
+                boolean first = true;
+                while (rs.next()) {
+                    LocalDate d = rs.getDate("work_date").toLocalDate();
+                    if (first) {
+                        first = false;
+                        if (d.equals(today))                   { streak = 1; expected = today.minusDays(1); }
+                        else if (d.equals(today.minusDays(1))) { streak = 1; expected = today.minusDays(2); }
+                        else                                   { return 0; }
+                    } else if (d.equals(expected)) {
+                        streak++;
+                        expected = expected.minusDays(1);
+                    } else {
+                        break;
+                    }
+                }
+                return streak;
+            }
+        } catch (SQLException e) { e.printStackTrace(); }
+        return 0;
+    }
+
+    public com.ems.model.AttendanceDiscipline getDisciplineThisWeek(int userId) {
+        int total       = getWeeklyAttendanceCount(userId);
+        int late        = getLateDaysThisWeek(userId);
+        int earlyLeave  = getEarlyLeaveDaysThisWeek(userId);
+        int onTime      = Math.max(0, total - late);
+
+        double score;
+        if (total == 0) {
+            score = 0.0;
+        } else {
+            double penalty = (late * 8.0) + (earlyLeave * 6.0);
+            score = 100.0 - penalty;
+            if (score < 0) score = 0;
+            if (score > 100) score = 100;
+        }
+        score = Math.round(score * 10.0) / 10.0;
+
+        com.ems.model.AttendanceDiscipline d = new com.ems.model.AttendanceDiscipline();
+        d.setUserId(userId);
+        d.setTotalDays(total);
+        d.setLateCount(late);
+        d.setEarlyLeaveCount(earlyLeave);
+        d.setOnTimeCount(onTime);
+        d.setAttendanceDisciplineScore(score);
+        return d;
     }
 }

@@ -39,8 +39,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Dashboard — EMS</title>
-  <link rel="stylesheet" href="${pageContext.request.contextPath}/css/style.css?v=1">
-  <link rel="stylesheet" href="${pageContext.request.contextPath}/assets/css/ems-ui.css?v=2">
+  <link rel="stylesheet" href="${pageContext.request.contextPath}/css/style.css?v=8">
+  <link rel="stylesheet" href="${pageContext.request.contextPath}/assets/css/ems-ui.css?v=8">
+  <script src="${pageContext.request.contextPath}/js/theme-init.js"></script>
 </head>
 <body>
 <div class="app-layout">
@@ -70,6 +71,12 @@
         <span class="nav-ic"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v4"/><path d="M16 2v4"/><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M3 10h18"/></svg></span>
         <span class="nav-tx">Attendance</span>
       </a>
+      <a class="nav-item" href="${pageContext.request.contextPath}/analytics" data-label="Analytics"><span class="nav-ic"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 14l4-4 4 3 5-7"/></svg></span><span class="nav-tx">Analytics</span></a>
+      <a class="nav-item" href="${pageContext.request.contextPath}/audit" data-label="Audit Logs">
+        <span class="nav-ic"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="15" y2="17"/></svg></span>
+        <span class="nav-tx">Audit Logs</span>
+      </a>
+      <a class="nav-item" href="${pageContext.request.contextPath}/leaves" data-label="Leaves"><span class="nav-ic"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><polyline points="9 16 11 18 15 14"/></svg></span><span class="nav-tx">Leaves</span></a>
     </nav>
     <div class="sb-ft">
       <form action="${pageContext.request.contextPath}/login" method="POST">
@@ -92,10 +99,10 @@
         <span class="tb-title">Dashboard</span>
       </div>
       <div class="tb-right">
-        <div class="tb-search">
+        <form class="tb-search" action="${pageContext.request.contextPath}/search" method="GET" role="search">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-          <input type="text" placeholder="Search...">
-        </div>
+          <input type="text" name="q" placeholder="Search employees, tasks, attendance…" autocomplete="off">
+        </form>
         <button class="ic-btn" type="button" aria-label="Notifications">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
         </button>
@@ -111,8 +118,8 @@
               <div class="dd-section-sub">Administrator</div>
             </div>
             <div class="dd-sep"></div>
-            <a class="dd-item" href="#">Profile</a>
-            <a class="dd-item" href="#">Settings</a>
+            <a class="dd-item" href="${pageContext.request.contextPath}/<%= user.getEmployeeId() == null ? "employees" : ("employees/profile?id=" + user.getEmployeeId()) %>">Profile</a>
+            <a class="dd-item" href="${pageContext.request.contextPath}/change-password">Settings</a>
           </div>
         </div>
       </div>
@@ -176,11 +183,21 @@
               <div class="card-title">Today's Attendance</div>
               <div class="card-subtitle">All check-ins recorded for today</div>
             </div>
-            <form style="display:flex; gap:var(--s2); align-items:center; flex-wrap:wrap;" action="${pageContext.request.contextPath}/dashboard" method="GET">
-              <input class="input input-sm" type="date" name="startDate" value="<%= esc(startDate) %>">
-              <input class="input input-sm" type="date" name="endDate"   value="<%= esc(endDate) %>">
-              <button type="submit" class="btn btn-primary btn-sm">Apply</button>
-            </form>
+            <div style="display:flex; gap:var(--s3); align-items:center; flex-wrap:wrap;">
+              <form style="display:flex; gap:var(--s2); align-items:center; flex-wrap:wrap;" action="${pageContext.request.contextPath}/dashboard" method="GET">
+                <input class="input input-sm" type="date" name="startDate" value="<%= esc(startDate) %>">
+                <input class="input input-sm" type="date" name="endDate"   value="<%= esc(endDate) %>">
+                <button type="submit" class="btn btn-primary btn-sm">Apply</button>
+              </form>
+              <a class="btn btn-secondary btn-sm" href="${pageContext.request.contextPath}/reports/attendance<%= (startDate != null && !startDate.isEmpty() && endDate != null && !endDate.isEmpty()) ? ("?startDate=" + esc(startDate) + "&endDate=" + esc(endDate)) : "" %>">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                Export CSV
+              </a>
+              <a class="btn btn-secondary btn-sm" href="${pageContext.request.contextPath}/reports/tasks">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                Tasks CSV
+              </a>
+            </div>
           </div>
           <div class="dg-container scrollbar">
             <table class="table">
@@ -203,14 +220,17 @@
                 <%
                   } else {
                     for (AttendanceRow row : attendanceRows) {
-                      String sClass = "status-badge " + ("Active".equalsIgnoreCase(row.getAttendanceStatus()) ? "status-active" : "status-inactive");
+                      String sLabel = row.isOnLeave() ? "On Leave" : row.getAttendanceStatus();
+                      String sClass = row.isOnLeave()
+                          ? "badge badge-info"
+                          : "status-badge " + ("Active".equalsIgnoreCase(row.getAttendanceStatus()) ? "status-active" : "status-inactive");
                 %>
                   <tr>
                     <td><span class="tm f-sm">#<%= row.getEmployeeId() %></span></td>
                     <td><span class="fw-6"><%= esc(row.getName()) %></span></td>
                     <td><span class="tm"><%= esc(row.getEmail()) %></span></td>
                     <td><%= esc(row.getDepartment()) %></td>
-                    <td><span class="<%= sClass %>"><%= esc(row.getAttendanceStatus()) %></span></td>
+                    <td><span class="<%= sClass %>"><%= esc(sLabel) %></span></td>
                     <td><%= row.getCheckInTime()  == null ? "--" : row.getCheckInTime() %></td>
                     <td><%= row.getCheckOutTime() == null ? "--" : row.getCheckOutTime() %></td>
                   </tr>
@@ -252,14 +272,17 @@
                 <%
                   } else {
                     for (AttendanceRow row : recentAttendanceRows) {
-                      String rClass = "status-badge " + ("Active".equalsIgnoreCase(row.getAttendanceStatus()) ? "status-active" : "status-inactive");
+                      String rLabel = row.isOnLeave() ? "On Leave" : row.getAttendanceStatus();
+                      String rClass = row.isOnLeave()
+                          ? "badge badge-info"
+                          : "status-badge " + ("Active".equalsIgnoreCase(row.getAttendanceStatus()) ? "status-active" : "status-inactive");
                 %>
                   <tr>
                     <td><span class="tm f-sm"><%= row.getWorkDate() == null ? "--" : row.getWorkDate() %></span></td>
                     <td><span class="tm f-sm">#<%= row.getEmployeeId() %></span></td>
                     <td><span class="fw-6"><%= esc(row.getName()) %></span></td>
                     <td><%= esc(row.getDepartment()) %></td>
-                    <td><span class="<%= rClass %>"><%= esc(row.getAttendanceStatus()) %></span></td>
+                    <td><span class="<%= rClass %>"><%= esc(rLabel) %></span></td>
                     <td><%= row.getCheckInTime()  == null ? "--" : row.getCheckInTime() %></td>
                     <td><%= row.getCheckOutTime() == null ? "--" : row.getCheckOutTime() %></td>
                   </tr>

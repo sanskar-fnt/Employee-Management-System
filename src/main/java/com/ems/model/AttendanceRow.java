@@ -4,13 +4,21 @@ import java.sql.Time;
 
 public class AttendanceRow {
     private int employeeId;
+    private Integer userId;          // FK to users.id; null if absent from join
     private String name;
     private String email;
     private String department;
     private String attendanceStatus;
+    private boolean onLeave;          // transient — populated by LeaveService
     private Time checkInTime;
     private Time checkOutTime;
     private java.sql.Date workDate;
+
+    public Integer getUserId()              { return userId; }
+    public void    setUserId(Integer userId){ this.userId = userId; }
+
+    public boolean isOnLeave()              { return onLeave; }
+    public void    setOnLeave(boolean v)    { this.onLeave = v; }
 
     public int getEmployeeId() {
         return employeeId;

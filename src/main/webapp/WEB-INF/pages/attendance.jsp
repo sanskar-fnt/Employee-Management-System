@@ -45,8 +45,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>EMS &mdash; Attendance</title>
-  <link rel="stylesheet" href="${pageContext.request.contextPath}/css/style.css">
-  <link rel="stylesheet" href="${pageContext.request.contextPath}/assets/css/ems-ui.css">
+  <link rel="stylesheet" href="${pageContext.request.contextPath}/css/style.css?v=8">
+  <link rel="stylesheet" href="${pageContext.request.contextPath}/assets/css/ems-ui.css?v=8">
+  <script src="${pageContext.request.contextPath}/js/theme-init.js"></script>
 </head>
 <body>
   <div class="app-layout">
@@ -80,6 +81,8 @@
           <span class="nav-ic"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 14l4-4 4 3 5-7"/></svg></span>
           <span class="nav-tx">Analytics</span>
         </a>
+        <a class="nav-item" href="${pageContext.request.contextPath}/audit"><span class="nav-ic"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="15" y2="17"/></svg></span><span class="nav-tx">Audit Logs</span></a>
+      <a class="nav-item" href="${pageContext.request.contextPath}/leaves" data-label="Leaves"><span class="nav-ic"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><polyline points="9 16 11 18 15 14"/></svg></span><span class="nav-tx">Leaves</span></a>
       </nav>
       <div class="sb-ft">
         <form action="${pageContext.request.contextPath}/login" method="POST">
@@ -114,8 +117,8 @@
                 <div class="dd-section-sub">Administrator</div>
               </div>
               <div class="dd-sep"></div>
-              <a class="dd-item" href="#">Profile</a>
-              <a class="dd-item" href="#">Settings</a>
+              <a class="dd-item" href="${pageContext.request.contextPath}/<%= user.getEmployeeId() == null ? "employees" : ("employees/profile?id=" + user.getEmployeeId()) %>">Profile</a>
+              <a class="dd-item" href="${pageContext.request.contextPath}/change-password">Settings</a>
             </div>
           </div>
         </div>
@@ -164,10 +167,21 @@
                 </thead>
                 <tbody>
                   <% if (rows == null || rows.isEmpty()) { %>
-                    <tr class="dg-empty"><td colspan="8">No attendance records found.</td></tr>
+                    <tr><td colspan="8">
+                      <div class="empty-state">
+                        <div class="empty-state-icon">
+                          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v4"/><path d="M16 2v4"/><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M3 10h18"/></svg>
+                        </div>
+                        <div class="empty-state-title">No attendance records</div>
+                        <div class="empty-state-msg">Try widening the date range or clearing the employee filter.</div>
+                      </div>
+                    </td></tr>
                   <% } else {
                        for (AttendanceRow row : rows) {
-                         String statusCls = "status-badge " + ("Active".equalsIgnoreCase(row.getAttendanceStatus()) ? "status-active" : "status-inactive");
+                         String statusLabel = row.isOnLeave() ? "On Leave" : row.getAttendanceStatus();
+                         String statusCls   = row.isOnLeave()
+                              ? "badge badge-info"
+                              : "status-badge " + ("Active".equalsIgnoreCase(row.getAttendanceStatus()) ? "status-active" : "status-inactive");
                          double hours = 0.0;
                          if (row.getCheckInTime() != null && row.getCheckOutTime() != null) {
                            long diff = row.getCheckOutTime().getTime() - row.getCheckInTime().getTime();
@@ -179,7 +193,7 @@
                       <td><span class="fw-6"><%= esc(row.getName()) %></span></td>
                       <td><span class="tm"><%= esc(row.getEmail()) %></span></td>
                       <td><%= esc(row.getDepartment()) %></td>
-                      <td><span class="<%= statusCls %>"><%= esc(row.getAttendanceStatus()) %></span></td>
+                      <td><span class="<%= statusCls %>"><%= esc(statusLabel) %></span></td>
                       <td><%= row.getCheckInTime() == null ? "--" : row.getCheckInTime() %></td>
                       <td><%= row.getCheckOutTime() == null ? "--" : row.getCheckOutTime() %></td>
                       <td><span class="tm"><%= String.format("%.2f", hours) %>h</span></td>

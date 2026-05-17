@@ -6,6 +6,7 @@ public class User {
     private String password;
     private String role;
     private Integer employeeId;
+    private boolean mustChangePassword;
 
     public User() {
     }
@@ -62,5 +63,13 @@ public class User {
 
     public void setEmployeeId(Integer employeeId) {
         this.employeeId = employeeId;
+    }
+
+    public boolean isMustChangePassword() {
+        return mustChangePassword;
+    }
+
+    public void setMustChangePassword(boolean mustChangePassword) {
+        this.mustChangePassword = mustChangePassword;
     }
 }

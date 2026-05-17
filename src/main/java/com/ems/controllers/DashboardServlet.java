@@ -3,6 +3,7 @@ package com.ems.controllers;
 import com.ems.model.User;
 import com.ems.service.AttendanceService;
 import com.ems.service.EmployeeService;
+import com.ems.service.LeaveService;
 import com.ems.service.TaskService;
 import com.ems.service.PerformanceService;
 import com.ems.util.CsrfUtil;
@@ -25,6 +26,7 @@ public class DashboardServlet extends HttpServlet {
     private final AttendanceService attendanceService = new AttendanceService();
     private final TaskService taskService = new TaskService();
     private final PerformanceService performanceService = new PerformanceService();
+    private final LeaveService leaveService = new LeaveService();
 
     @Override
     protected void doGet(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
@@ -36,6 +38,10 @@ public class DashboardServlet extends HttpServlet {
         request.setAttribute("csrfToken", CsrfUtil.ensureToken(session));
 
         User user = (User) session.getAttribute("user");
+        if (user != null && user.isMustChangePassword()) {
+            response.sendRedirect(request.getContextPath() + "/change-password");
+            return;
+        }
         if (user != null && "EMPLOYEE".equalsIgnoreCase(user.getRole())) {
             response.sendRedirect(request.getContextPath() + "/emp-dashboard");
             return;
@@ -53,14 +59,26 @@ public class DashboardServlet extends HttpServlet {
         request.setAttribute("todayAttendance", attendanceService.getTodayAttendanceCount());
         request.setAttribute("totalAttendance", attendanceService.getTotalAttendanceCount());
         request.setAttribute("taskStats", taskService.getTaskStats());
-        request.setAttribute("performanceLeaderboard", performanceService.getTopPerformers(5));
-        if (startDate != null && endDate != null) {
-            request.setAttribute("attendanceRows", attendanceService.getAttendanceByRange(startDate, endDate));
-            request.setAttribute("recentAttendanceRows", attendanceService.getRecentAttendanceByRange(startDate, endDate, 10));
-        } else {
-            request.setAttribute("attendanceRows", employeeService.getTodayAttendance());
-            request.setAttribute("recentAttendanceRows", attendanceService.getRecentAttendance(10));
+        java.util.List<com.ems.model.PerformanceEntry> leaderboard = performanceService.getTopPerformers(5);
+        request.setAttribute("performanceLeaderboard", leaderboard);
+        java.util.List<com.ems.model.PerformanceBreakdown> breakdowns = new java.util.ArrayList<>();
+        for (com.ems.model.PerformanceEntry entry : leaderboard) {
+            breakdowns.add(performanceService.getPerformanceBreakdown(entry.getUserId()));
         }
+        request.setAttribute("performanceBreakdowns", breakdowns);
+        java.util.List<com.ems.model.AttendanceRow> attRows;
+        java.util.List<com.ems.model.AttendanceRow> recRows;
+        if (startDate != null && endDate != null) {
+            attRows = attendanceService.getAttendanceByRange(startDate, endDate);
+            recRows = attendanceService.getRecentAttendanceByRange(startDate, endDate, 10);
+        } else {
+            attRows = employeeService.getTodayAttendance();
+            recRows = attendanceService.getRecentAttendance(10);
+        }
+        leaveService.markOnLeave(attRows);
+        leaveService.markOnLeave(recRows);
+        request.setAttribute("attendanceRows",       attRows);
+        request.setAttribute("recentAttendanceRows", recRows);
         request.setAttribute("startDate", startDate == null ? "" : startDate.toString());
         request.setAttribute("endDate", endDate == null ? "" : endDate.toString());
         RequestDispatcher dispatcher = request.getRequestDispatcher("/WEB-INF/pages/dashboard.jsp");

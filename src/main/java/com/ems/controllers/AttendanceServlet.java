@@ -3,7 +3,9 @@ package com.ems.controllers;
 import com.ems.model.User;
 import com.ems.model.Employee;
 import com.ems.service.AttendanceService;
+import com.ems.service.AuditService;
 import com.ems.service.EmployeeService;
+import com.ems.service.LeaveService;
 import com.ems.util.CsrfUtil;
 
 import jakarta.servlet.ServletException;
@@ -21,6 +23,8 @@ public class AttendanceServlet extends HttpServlet {
 
     private final AttendanceService attendanceService = new AttendanceService();
     private final EmployeeService employeeService = new EmployeeService();
+    private final AuditService auditService = new AuditService();
+    private final LeaveService leaveService = new LeaveService();
 
     @Override
     protected void doGet(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
@@ -46,7 +50,10 @@ public class AttendanceServlet extends HttpServlet {
         int total = attendanceService.getAttendanceRecordCount(date, employeeId);
         int totalPages = Math.max(1, (int) Math.ceil(total / (double) size));
 
-        request.setAttribute("attendanceRows", attendanceService.getAttendanceRecords(date, employeeId, size, offset));
+        java.util.List<com.ems.model.AttendanceRow> attRows =
+                attendanceService.getAttendanceRecords(date, employeeId, size, offset);
+        leaveService.markOnLeave(attRows);
+        request.setAttribute("attendanceRows", attRows);
         request.setAttribute("employees", employeeService.getAllEmployees());
         request.setAttribute("filterDate", date == null ? "" : date.toString());
         request.setAttribute("filterEmployeeId", employeeId == null ? "" : employeeId.toString());
@@ -85,10 +92,19 @@ public class AttendanceServlet extends HttpServlet {
 
         String action = request.getParameter("action");
         AttendanceService.AttendanceActionResult result;
+        String auditAction = null;
         if ("checkin".equalsIgnoreCase(action)) {
+            // Block check-in if the employee is on approved leave today.
+            if (leaveService.isOnApprovedLeave(user.getId(), java.time.LocalDate.now())) {
+                session.setAttribute("attendanceError", "You are on approved leave today.");
+                response.sendRedirect(request.getContextPath() + "/emp-dashboard");
+                return;
+            }
             result = attendanceService.attemptCheckIn(user.getId());
+            auditAction = AuditService.CHECK_IN;
         } else if ("checkout".equalsIgnoreCase(action)) {
             result = attendanceService.attemptCheckOut(user.getId());
+            auditAction = AuditService.CHECK_OUT;
         } else {
             session.setAttribute("attendanceError", "Invalid attendance action.");
             response.sendRedirect(request.getContextPath() + "/emp-dashboard");
@@ -96,6 +112,10 @@ public class AttendanceServlet extends HttpServlet {
         }
 
         session.setAttribute(result.isSuccess() ? "attendanceMessage" : "attendanceError", result.getMessage());
+        if (result.isSuccess()) {
+            auditService.log(user.getId(), auditAction, "ATTENDANCE", user.getId(),
+                    "user=" + user.getUsername());
+        }
         response.sendRedirect(request.getContextPath() + "/emp-dashboard");
     }
 
